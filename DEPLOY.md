@@ -11,8 +11,9 @@ Your existing marketing site can stay where it is — put this app on a **subdom
 
 ## What's already set up for deployment
 
-- **`render.yaml`** — a Render Blueprint: build command, start command, health check,
-  a persistent disk for the SQLite database, and all the environment variables.
+- **`render.yaml`** — a Render Blueprint: build command, start command, health check, a
+  **managed Postgres database**, and all the environment variables. Data survives
+  redeploys out of the box.
 - **Login gate** — the whole instance sits behind a password (`APP_PASSWORD`). Set that
   variable and the site is private; leave it unset and it's open (local dev only).
 - **`/healthz`** — a public health-check endpoint Render pings to know the app is up.
@@ -31,6 +32,9 @@ Your existing marketing site can stay where it is — put this app on a **subdom
    Render Dashboard → **New** → **Blueprint** → connect your GitHub repo. Render reads
    `render.yaml` and proposes the `cpsc-compliance` web service. Click **Apply**.
 
+   The Blueprint also creates a managed **Postgres** database (`cpsc-db`) and wires its
+   connection string into `DATABASE_URL` for you — no manual database setup.
+
 3. **Set the secret environment variables** (Render prompts for the ones marked
    `sync: false`):
    - `APP_PASSWORD` — **required.** The password you'll use to log in. Pick a strong one.
@@ -38,7 +42,8 @@ Your existing marketing site can stay where it is — put this app on a **subdom
      without it, extraction falls back to keyword heuristics. (Get a key at
      https://console.anthropic.com.)
 
-   `SESSION_SECRET` is generated automatically; `APP_USERNAME` defaults to `admin`.
+   `SESSION_SECRET` is generated automatically; `APP_USERNAME` defaults to `admin`;
+   `DATABASE_URL` is injected from the managed Postgres.
 
 4. **Deploy.** The first build installs dependencies and starts the app (a few minutes).
    When it's live, open the `…onrender.com` URL, sign in with `admin` + your
@@ -56,18 +61,12 @@ Done — the app is live at `https://app.yourdomain.com`, private behind your pa
 
 ## Important notes
 
-- **Data persistence / pricing.** SQLite lives on the mounted disk (`/var/data`), which
-  requires a **paid** Render instance. On the **free** web tier there is no persistent
-  disk, so the database resets on every deploy. Two options:
-  - Pay for the Starter instance (keeps the disk), **or**
-  - Switch to a managed **Postgres** (Render offers one): create a Postgres instance,
-    then change `DATABASE_URL` to the connection string it gives you (starts with
-    `postgresql://`) and remove the `disk:` block from `render.yaml`. The app already
-    supports this — it's a one-variable change (`app/database.py`). Add `psycopg[binary]`
-    to `requirements.txt` for the Postgres driver.
-
-- **Keep a single instance while on SQLite.** SQLite is a single-writer file database;
-  don't scale to multiple instances until you've moved to Postgres.
+- **Database.** The Blueprint provisions managed **Postgres**, so data survives
+  redeploys and you can scale to multiple web instances. `free` is fine to start —
+  check Render's current free-database limits and move to a paid plan for production
+  durability. The app also runs on **SQLite** with zero config for local dev (it's the
+  default when `DATABASE_URL` is unset); the psycopg Postgres driver is already in
+  `requirements.txt`.
 
 - **Rotating the password.** Change `APP_PASSWORD` in the Render dashboard and redeploy.
   All existing sessions stay valid until they're cleared; change `SESSION_SECRET` too if

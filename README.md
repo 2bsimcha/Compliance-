@@ -81,11 +81,21 @@ export APP_USERNAME=admin                  # optional, defaults to "admin"
 export SESSION_SECRET=$(openssl rand -hex 32)  # optional; stable secret across restarts
 ```
 
+### Database
+
+SQLite by default (zero config, `./compliance.db`). Set `DATABASE_URL` to a Postgres
+connection string to use Postgres instead — the app normalizes the scheme and uses native
+`JSONB` columns automatically. No code change needed.
+
+```bash
+export DATABASE_URL=postgresql://user:pass@host:5432/dbname   # optional; Postgres
+```
+
 ### Deploying to a live website
 
 See **[DEPLOY.md](DEPLOY.md)** for a step-by-step Render deployment (custom domain +
-HTTPS + persistent database), plus notes for Railway, Fly.io, or your own server. A
-`render.yaml` Blueprint is included.
+HTTPS + managed Postgres), plus notes for Railway, Fly.io, or your own server. A
+`render.yaml` Blueprint is included and provisions the database for you.
 
 Run the tests:
 

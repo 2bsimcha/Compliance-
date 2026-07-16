@@ -7,9 +7,13 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+# Native JSONB on Postgres (indexable, faster); plain JSON everywhere else (e.g. SQLite).
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Company(Base):
@@ -31,7 +35,7 @@ class Product(Base):
     source_input: Mapped[str | None] = mapped_column(Text, nullable=True)  # pasted text / URL / report
     # The flat attribute dict built up by the interview + extraction. Consumed directly
     # by the rules engine.
-    attrs: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    attrs: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     status: Mapped[str] = mapped_column(String(40), default="intake")  # intake|interview|assessed|drafted
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -46,8 +50,8 @@ class Certificate(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     cert_type: Mapped[str] = mapped_column(String(20))  # GCC|CPC
-    draft: Mapped[dict[str, Any]] = mapped_column(JSON)
-    gap_analysis: Mapped[dict[str, Any]] = mapped_column(JSON)
+    draft: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    gap_analysis: Mapped[dict[str, Any]] = mapped_column(JSONType)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     product: Mapped[Product] = relationship(back_populates="certificates")
@@ -64,7 +68,7 @@ class EcfrCache(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     cache_key: Mapped[str] = mapped_column(String(300), unique=True, index=True)
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONType)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -78,7 +82,7 @@ class KnowledgeRule(Base):
     __tablename__ = "knowledge_rules"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    rule: Mapped[dict[str, Any]] = mapped_column(JSON)  # the structured rule object
+    rule: Mapped[dict[str, Any]] = mapped_column(JSONType)  # the structured rule object
     verification_tier: Mapped[str] = mapped_column(String(30), default="community_unverified")
     status: Mapped[str] = mapped_column(String(30), default="pending_review")
     reported_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
