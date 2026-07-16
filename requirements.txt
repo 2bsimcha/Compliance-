@@ -4,4 +4,5 @@ sqlalchemy==2.0.36
 pydantic==2.10.4
 python-multipart==0.0.20
 httpx==0.28.1
+anthropic==0.116.0
 pytest==8.3.4

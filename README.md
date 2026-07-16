@@ -32,7 +32,7 @@ Unlike the CPSC Regulatory Robot, this tool is:
 | Certificate drafter | `app/engine/drafter.py` | Drafts a GCC or CPC with all required elements + gap analysis |
 | Learning loop | `app/engine/knowledge.py` | Capture user-reported rules/exemptions into a review queue with verification tiers |
 | **Live eCFR** | `app/engine/ecfr.py` | Talks to the official eCFR API: Title 16 currency, live section text by citation, full-text search, and per-rule "refresh against source" |
-| Extraction | `app/engine/extract.py` | Pre-fills product attributes from pasted text / URL / test report (LLM-pluggable) |
+| Extraction | `app/engine/extract.py` | Pre-fills product attributes from pasted text / URL / test report — **Claude-backed** (structured output) with a heuristic fallback |
 | API + UI | `app/main.py`, `app/static/` | FastAPI backend + a zero-build web UI |
 
 ## Live eCFR integration
@@ -74,6 +74,33 @@ Run the tests:
 ```bash
 pip install -r requirements.txt
 pytest -q
+```
+
+## LLM extraction (Claude)
+
+`app/engine/extract.py` turns an unstructured description, web-page text, or test report
+into structured product attributes that pre-fill the interview.
+
+- **Backend:** when `ANTHROPIC_API_KEY` is set, it calls the Anthropic Messages API with a
+  **structured-output schema** (`messages.parse` + a Pydantic model), so the model fills a
+  validated object mapped to the exact controlled vocabulary the rules engine uses — no
+  free-text parsing. Model defaults to `claude-opus-4-8`; override with
+  `COMPLIANCE_LLM_MODEL` (e.g. `claude-haiku-4-5`) to trade cost for capability.
+- **Offline fallback:** with no key (or on any API error) it uses transparent keyword
+  heuristics, so the whole app runs with zero configuration.
+
+Two guarantees keep it safe:
+
+- **Never authoritative on the critical fork.** Extraction returns the child age as a
+  *hint* (`intended_age_max_hint`), never the authoritative value — the consultant
+  interview still asks and confirms the single biggest CPSC fork (children's vs
+  general-use). Everything else it fills is a head-start the interview skips if known.
+- **Never blocks intake.** Any LLM failure falls back to heuristics with the error
+  recorded in `_llm_error`; extraction never raises.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...        # enable Claude extraction
+export COMPLIANCE_LLM_MODEL=claude-haiku-4-5  # optional: cheaper model
 ```
 
 ## Product dashboard
