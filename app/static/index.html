@@ -8,68 +8,90 @@
 </head>
 <body>
   <header>
-    <h1>CPSC Compliance Consultant <span class="tag">MVP</span></h1>
+    <h1 id="home-link">CPSC Compliance Consultant <span class="tag">MVP</span></h1>
     <p class="disclaimer">Guidance only — not legal advice. Children's Product Certificates require third-party lab testing.</p>
     <p id="ecfr-currency" class="muted">Checking eCFR currency…</p>
   </header>
 
   <main>
-    <!-- Intake -->
-    <section class="card" id="intake">
-      <h2>1 · New product intake</h2>
-      <label>Product name
-        <input id="p-name" placeholder="e.g. Wooden stacking rings" />
-      </label>
-      <label>Company (optional)
-        <input id="p-company" placeholder="Acme Toys" />
-      </label>
-      <label>Paste a description, URL, or test report (optional — pre-fills the interview)
-        <textarea id="p-source" rows="3" placeholder="Plush dinosaur toy for ages 3+, polyester fabric, printed eyes..."></textarea>
-      </label>
-      <button id="btn-create">Start consultation →</button>
-    </section>
+    <!-- ===================== DASHBOARD VIEW ===================== -->
+    <div id="view-dashboard">
+      <section class="card">
+        <div class="row-between">
+          <h2>Product portfolio</h2>
+          <button id="btn-new">＋ New product</button>
+        </div>
+        <div id="stats" class="stats"></div>
+      </section>
 
-    <!-- Interview -->
-    <section class="card hidden" id="interview">
-      <h2>2 · Consultation <span id="prod-label" class="muted"></span></h2>
-      <div id="progress" class="muted"></div>
-      <div id="question"></div>
-      <div id="extracted" class="extracted"></div>
-    </section>
+      <!-- Intake (revealed by "New product") -->
+      <section class="card hidden" id="intake">
+        <h2>New product intake</h2>
+        <label>Product name <input id="p-name" placeholder="e.g. Wooden stacking rings" /></label>
+        <label>Company (optional) <input id="p-company" placeholder="Acme Toys" /></label>
+        <label>Paste a description, URL, or test report (optional — pre-fills the interview)
+          <textarea id="p-source" rows="3" placeholder="Plush dinosaur toy for ages 3, polyester fabric, printed eyes..."></textarea>
+        </label>
+        <button id="btn-create">Start consultation →</button>
+        <button id="btn-cancel-new" class="secondary">Cancel</button>
+      </section>
 
-    <!-- Assessment -->
-    <section class="card hidden" id="assessment">
-      <h2>3 · Compliance assessment</h2>
-      <div id="assessment-body"></div>
-      <button id="btn-draft" class="hidden">Draft certificate →</button>
-    </section>
+      <section class="card">
+        <h2>Products <span id="prod-count" class="muted"></span></h2>
+        <div id="product-list"></div>
+      </section>
 
-    <!-- Draft -->
-    <section class="card hidden" id="draft">
-      <h2>4 · Certificate draft</h2>
-      <div id="draft-body"></div>
-    </section>
+      <!-- eCFR live lookup -->
+      <section class="card" id="ecfr">
+        <h2>Look up live CFR text</h2>
+        <p class="muted">Search the current Code of Federal Regulations (Title 16) straight from eCFR.</p>
+        <label>Search regulations <input id="e-query" placeholder="e.g. lead in paint, small parts, phthalates" /></label>
+        <button id="btn-ecfr-search">Search eCFR →</button>
+        <div id="ecfr-results"></div>
+      </section>
 
-    <!-- eCFR live lookup -->
-    <section class="card" id="ecfr">
-      <h2>Look up live CFR text</h2>
-      <p class="muted">Search the current Code of Federal Regulations (Title 16) straight from eCFR.</p>
-      <label>Search regulations <input id="e-query" placeholder="e.g. lead in paint, small parts, phthalates" /></label>
-      <button id="btn-ecfr-search">Search eCFR →</button>
-      <div id="ecfr-results"></div>
-    </section>
+      <!-- Learning loop -->
+      <section class="card" id="learn">
+        <h2>Teach the knowledge base</h2>
+        <p class="muted">Know about a new law or exemption? File it. It enters a review queue as <em>community-unverified</em> and won't affect assessments until verified.</p>
+        <label>Title <input id="k-title" placeholder="New exemption for recycled PET in toys" /></label>
+        <label>Citation <input id="k-citation" placeholder="16 CFR 1307.x / Fed. Reg. doc no." /></label>
+        <label>Summary <textarea id="k-summary" rows="2"></textarea></label>
+        <label>Source URL <input id="k-source" placeholder="https://www.federalregister.gov/..." /></label>
+        <button id="btn-report">File knowledge →</button>
+        <div id="report-result"></div>
+      </section>
+    </div>
 
-    <!-- Learning loop -->
-    <section class="card" id="learn">
-      <h2>Teach the knowledge base</h2>
-      <p class="muted">Know about a new law or exemption? File it. It enters a review queue as <em>community-unverified</em> and won't affect assessments until verified.</p>
-      <label>Title <input id="k-title" placeholder="New exemption for recycled PET in toys" /></label>
-      <label>Citation <input id="k-citation" placeholder="16 CFR 1307.x / Fed. Reg. doc no." /></label>
-      <label>Summary <textarea id="k-summary" rows="2"></textarea></label>
-      <label>Source URL <input id="k-source" placeholder="https://www.federalregister.gov/..." /></label>
-      <button id="btn-report">File knowledge →</button>
-      <div id="report-result"></div>
-    </section>
+    <!-- ===================== PRODUCT DETAIL VIEW ===================== -->
+    <div id="view-product" class="hidden">
+      <section class="card">
+        <button id="btn-back" class="secondary">← Back to dashboard</button>
+        <div class="row-between" style="margin-top:10px">
+          <h2 id="pd-name"></h2>
+          <button id="btn-delete" class="danger">Delete</button>
+        </div>
+        <div id="pd-meta" class="muted"></div>
+      </section>
+
+      <section class="card" id="pd-interview">
+        <h2>Consultation</h2>
+        <div id="progress" class="muted"></div>
+        <div id="question"></div>
+        <div id="extracted" class="extracted"></div>
+      </section>
+
+      <section class="card hidden" id="pd-assessment">
+        <h2>Compliance assessment</h2>
+        <div id="assessment-body"></div>
+        <button id="btn-draft" class="hidden">Draft certificate →</button>
+      </section>
+
+      <section class="card hidden" id="pd-drafts">
+        <h2>Certificate drafts</h2>
+        <div id="drafts-body"></div>
+      </section>
+    </div>
   </main>
 
   <script src="/static/app.js"></script>

@@ -24,6 +24,7 @@ Unlike the CPSC Regulatory Robot, this tool is:
 
 | Piece | Where | What it does |
 |-------|-------|--------------|
+| **Product dashboard** | `app/main.py`, `app/static/` | Multi-SKU portfolio: aggregate stats + a table of every product with its live compliance state; click through to resume any product's interview, view its assessment, and manage drafts |
 | Shared predicate engine | `app/engine/predicates.py` | One evaluator drives both the interview branching and the rule applicability check |
 | Adaptive interview | `app/engine/interview.py` | Consultant-style branching questionnaire; each question tied to *why* it's asked |
 | Knowledge base | `app/data/knowledge_base.json` + `app/engine/knowledge.py` | Structured CPSC rule objects with citations, exemptions, and verification tiers |
@@ -74,6 +75,23 @@ Run the tests:
 pip install -r requirements.txt
 pytest -q
 ```
+
+## Product dashboard
+
+The home screen is a **portfolio dashboard** across all your products (SKUs):
+
+- **Aggregate stats** — total products, how many need lab testing, how many interviews
+  are still open, how many have drafts, and the CPC/GCC split.
+- **Product table** — each row shows the product's company, status, certificate type,
+  applicable-rule count (with a "lab" flag when testing is required), interview progress,
+  and draft count. Every row's compliance state is computed live from stored answers
+  against the current rule set — so a newly-verified community rule instantly updates the
+  whole portfolio.
+- **Click through** to a product to resume its interview mid-flow, view its assessment
+  (with live eCFR lookups), draft/manage certificates, or delete it.
+
+Dashboard API: `GET /api/products` (summaries), `GET /api/dashboard` (aggregates),
+`DELETE /api/products/{id}`, `GET /api/products/{id}/certificates`.
 
 ## How the flow works
 

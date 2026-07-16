@@ -2,17 +2,287 @@
 
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts = {}) => {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
   return res.json();
 };
+const escapeHtml = (s) =>
+  (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
 let productId = null;
 
-// ---- eCFR currency banner --------------------------------------------------
+const CERT_BADGE = {
+  CPC: '<span class="badge cpc">CPC</span>',
+  GCC: '<span class="badge gcc">GCC</span>',
+  undetermined: '<span class="badge">—</span>',
+};
+
+// ===========================================================================
+// View switching
+// ===========================================================================
+function showDashboard() {
+  $("view-product").classList.add("hidden");
+  $("view-dashboard").classList.remove("hidden");
+  loadDashboard();
+}
+function showProduct() {
+  $("view-dashboard").classList.add("hidden");
+  $("view-product").classList.remove("hidden");
+}
+$("btn-back").onclick = showDashboard;
+$("home-link").onclick = showDashboard;
+
+// ===========================================================================
+// Dashboard
+// ===========================================================================
+async function loadDashboard() {
+  const [stats, products] = await Promise.all([api("/api/dashboard"), api("/api/products")]);
+  renderStats(stats);
+  renderProductList(products);
+}
+
+function renderStats(s) {
+  const tiles = [
+    ["Products", s.total],
+    ["Need lab testing", s.needing_testing],
+    ["Interviews open", s.interviews_incomplete],
+    ["With drafts", s.with_drafts],
+    ["CPC", s.by_certificate_type?.CPC || 0],
+    ["GCC", s.by_certificate_type?.GCC || 0],
+  ];
+  $("stats").innerHTML = tiles
+    .map(([label, val]) => `<div class="stat"><div class="stat-val">${val}</div><div class="stat-label">${label}</div></div>`)
+    .join("");
+}
+
+function renderProductList(products) {
+  $("prod-count").textContent = `(${products.length})`;
+  if (!products.length) {
+    $("product-list").innerHTML = `<p class="muted">No products yet. Click “＋ New product” to start a consultation.</p>`;
+    return;
+  }
+  $("product-list").innerHTML = `
+    <table class="grid">
+      <thead><tr>
+        <th>Product</th><th>Company</th><th>Status</th><th>Cert</th>
+        <th>Rules</th><th>Interview</th><th>Drafts</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${products.map(rowFor).join("")}
+      </tbody>
+    </table>`;
+  $("product-list").querySelectorAll("[data-open]").forEach((el) => {
+    el.onclick = () => openProduct(parseInt(el.dataset.open, 10));
+  });
+}
+
+function rowFor(p) {
+  const interview = p.interview_complete
+    ? '<span class="ok">complete</span>'
+    : `${p.questions_answered}/${p.questions_relevant}`;
+  const testing = p.testing_required ? ' <span class="badge test">lab</span>' : "";
+  return `<tr class="clickable" data-open="${p.id}">
+    <td><strong>${escapeHtml(p.name)}</strong></td>
+    <td>${escapeHtml(p.company_name || "—")}</td>
+    <td><span class="status s-${p.status}">${p.status}</span></td>
+    <td>${CERT_BADGE[p.certificate_type] || "—"}</td>
+    <td>${p.applicable_count}${testing}</td>
+    <td>${interview}</td>
+    <td>${p.certificate_count || 0}</td>
+    <td class="chev">›</td>
+  </tr>`;
+}
+
+// ---- Intake ----------------------------------------------------------------
+$("btn-new").onclick = () => {
+  $("intake").classList.remove("hidden");
+  $("p-name").focus();
+};
+$("btn-cancel-new").onclick = () => {
+  $("intake").classList.add("hidden");
+  ["p-name", "p-company", "p-source"].forEach((id) => ($(id).value = ""));
+};
+$("btn-create").onclick = async () => {
+  const name = $("p-name").value.trim();
+  if (!name) return alert("Give the product a name.");
+  const data = await api("/api/products", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      company_name: $("p-company").value.trim() || null,
+      source_input: $("p-source").value.trim() || null,
+    }),
+  });
+  $("btn-cancel-new").onclick();
+  openProduct(data.id, data.attrs);
+};
+
+// ===========================================================================
+// Product detail
+// ===========================================================================
+async function openProduct(id, prefetchedAttrs) {
+  productId = id;
+  const p = await api(`/api/products/${id}`);
+  $("pd-name").textContent = p.name;
+  $("pd-meta").innerHTML =
+    `${p.company_name ? escapeHtml(p.company_name) + " · " : ""}status: <span class="status s-${p.status}">${p.status}</span>` +
+    (p.updated_at ? ` · updated ${new Date(p.updated_at).toLocaleString()}` : "");
+  showProduct();
+  ["pd-assessment", "pd-drafts"].forEach((s) => $(s).classList.add("hidden"));
+  $("btn-draft").classList.add("hidden");
+  showExtracted(prefetchedAttrs || p.attrs);
+  loadDrafts();
+  loadQuestion();
+}
+
+$("btn-delete").onclick = async () => {
+  if (!confirm("Delete this product and its drafts?")) return;
+  await api(`/api/products/${productId}`, { method: "DELETE" });
+  showDashboard();
+};
+
+function showExtracted(attrs) {
+  const hints = Object.entries(attrs || {}).filter(([k]) => !k.startsWith("_"));
+  $("extracted").textContent = hints.length
+    ? "Known so far: " + hints.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")
+    : "";
+}
+
+// ---- Interview -------------------------------------------------------------
+async function loadQuestion() {
+  const data = await api(`/api/products/${productId}/next-question`);
+  $("progress").textContent = `Answered ${data.progress.answered} of ${data.progress.relevant} relevant questions`;
+  if (data.complete) {
+    $("question").innerHTML = `<p class="ok">Consultation complete.</p>`;
+    return loadAssessment();
+  }
+  renderQuestion(data.question);
+}
+
+function renderQuestion(q) {
+  $("question").innerHTML = `
+    <div class="q-prompt">${q.prompt}</div>
+    <div class="q-reason">Why I'm asking: ${q.reason}</div>
+    <div class="q-cite">${q.citation}</div>
+    <div id="answer-area"></div>`;
+  const area = $("answer-area");
+
+  if (q.type === "bool") {
+    area.innerHTML = `<div class="choices">
+      <div class="choice" data-v="true">Yes</div>
+      <div class="choice" data-v="false">No</div></div>`;
+    area.querySelectorAll(".choice").forEach((el) => (el.onclick = () => submit(q.key, el.dataset.v === "true")));
+  } else if (q.type === "int") {
+    area.innerHTML = `<input id="int-in" type="number" placeholder="e.g. 3" /><button id="int-go">Next</button>`;
+    $("int-go").onclick = () => {
+      const v = parseInt($("int-in").value, 10);
+      if (Number.isNaN(v)) return alert("Enter a number.");
+      submit(q.key, v);
+    };
+  } else if (q.type === "single") {
+    area.innerHTML = `<div class="choices">${q.choices.map((c) => `<div class="choice" data-v="${c}">${c}</div>`).join("")}</div>`;
+    area.querySelectorAll(".choice").forEach((el) => (el.onclick = () => submit(q.key, el.dataset.v)));
+  } else if (q.type === "multi") {
+    const sel = new Set();
+    area.innerHTML =
+      `<div class="choices">${q.choices.map((c) => `<div class="choice" data-v="${c}">${c}</div>`).join("")}</div>` +
+      `<button id="multi-go">Next</button>`;
+    area.querySelectorAll(".choice").forEach((el) => {
+      el.onclick = () => {
+        el.classList.toggle("sel");
+        el.classList.contains("sel") ? sel.add(el.dataset.v) : sel.delete(el.dataset.v);
+      };
+    });
+    $("multi-go").onclick = () => submit(q.key, [...sel]);
+  }
+}
+
+async function submit(key, value) {
+  const r = await api(`/api/products/${productId}/answer`, {
+    method: "POST",
+    body: JSON.stringify({ key, value }),
+  });
+  showExtracted(r.attrs);
+  loadQuestion();
+}
+
+// ---- Assessment ------------------------------------------------------------
+async function loadAssessment() {
+  const a = await api(`/api/products/${productId}/assessment`);
+  $("pd-assessment").classList.remove("hidden");
+  let html = `<p><strong>Certificate type:</strong> ${CERT_BADGE[a.certificate_type] || "—"}</p>`;
+  if (a.third_party_testing_required)
+    html += `<p class="gap">⚠ Third-party lab testing is required (see flagged rules below).</p>`;
+  html += `<p class="muted">${a.applicable_rules.length} applicable rule(s):</p>`;
+
+  for (const r of a.applicable_rules) {
+    html += `<div class="rule">
+      <h4>${r.title}
+        ${r.third_party_testing && !r.exemptions_met.length ? '<span class="badge test">lab test</span>' : ""}
+        ${r.exemptions_met.length ? '<span class="badge exempt">exemption</span>' : ""}
+      </h4>
+      <div class="cite">${r.citation}</div>
+      <div class="muted">${r.summary}</div>
+      ${r.exemptions_met.map((e) => `<div class="exemption">Exemption available: ${e.summary}<br/><span class="cite">${e.citation}</span></div>`).join("")}
+      <button class="secondary btn-live" data-cite="${encodeURIComponent(r.citation)}">View live CFR text</button>
+      <div class="live-text"></div>
+    </div>`;
+  }
+  $("assessment-body").innerHTML = html;
+  $("assessment-body").querySelectorAll(".btn-live").forEach((btn) => (btn.onclick = () => loadLiveText(btn)));
+  $("btn-draft").classList.remove("hidden");
+}
+
+async function loadLiveText(btn) {
+  const cite = decodeURIComponent(btn.dataset.cite);
+  const box = btn.nextElementSibling;
+  box.innerHTML = `<span class="muted">Fetching ${cite} from eCFR…</span>`;
+  try {
+    const d = await api(`/api/ecfr/section?citation=${encodeURIComponent(cite)}`);
+    if (!d.ok) return (box.innerHTML = `<span class="gap">Live text unavailable: ${d.error}</span>`);
+    box.innerHTML =
+      `<div class="muted">Current as of ${d.current_as_of}${d._cached ? " (cached)" : ""} · <a href="${d.source_url}" target="_blank" rel="noopener">source</a></div>` +
+      `<pre>${escapeHtml(d.heading ? d.heading + "\n\n" : "")}${escapeHtml(d.text)}${d.truncated ? "\n…(truncated)" : ""}</pre>`;
+  } catch (e) {
+    box.innerHTML = `<span class="gap">Lookup failed: ${e.message}</span>`;
+  }
+}
+
+// ---- Drafts ----------------------------------------------------------------
+$("btn-draft").onclick = async () => {
+  await api(`/api/products/${productId}/draft`, { method: "POST", body: JSON.stringify({}) });
+  loadDrafts();
+};
+
+async function loadDrafts() {
+  const certs = await api(`/api/products/${productId}/certificates`);
+  if (!certs.length) {
+    $("pd-drafts").classList.add("hidden");
+    return;
+  }
+  $("pd-drafts").classList.remove("hidden");
+  $("drafts-body").innerHTML = certs
+    .map((c) => {
+      const gaps = c.gap_analysis.outstanding || [];
+      return `<div class="rule">
+        <h4>${c.cert_type} draft
+          ${c.ready_to_issue ? '<span class="badge gcc">ready</span>' : '<span class="badge test">gaps</span>'}
+        </h4>
+        <div class="muted">${c.created_at ? new Date(c.created_at).toLocaleString() : ""}</div>
+        <details><summary class="muted">Show certificate JSON</summary><pre>${escapeHtml(JSON.stringify(c.draft, null, 2))}</pre></details>
+        ${
+          c.ready_to_issue
+            ? '<p class="ok">✓ All required fields present — ready to finalize.</p>'
+            : `<div class="muted" style="margin-top:6px">Gap analysis:</div>` + gaps.map((g) => `<div class="gap">• ${g}</div>`).join("")
+        }
+      </div>`;
+    })
+    .join("");
+}
+
+// ===========================================================================
+// Global panels: eCFR + learning loop + currency
+// ===========================================================================
 (async function showCurrency() {
   try {
     const d = await api("/api/ecfr/currency");
@@ -24,7 +294,6 @@ let productId = null;
   }
 })();
 
-// ---- eCFR search -----------------------------------------------------------
 $("btn-ecfr-search").onclick = async () => {
   const q = $("e-query").value.trim();
   if (!q) return;
@@ -48,174 +317,6 @@ $("btn-ecfr-search").onclick = async () => {
   }
 };
 
-// ---- Intake ----------------------------------------------------------------
-$("btn-create").onclick = async () => {
-  const name = $("p-name").value.trim();
-  if (!name) return alert("Give the product a name.");
-  const data = await api("/api/products", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      company_name: $("p-company").value.trim() || null,
-      source_input: $("p-source").value.trim() || null,
-    }),
-  });
-  productId = data.id;
-  $("prod-label").textContent = "· " + data.name;
-  $("interview").classList.remove("hidden");
-  showExtracted(data.attrs);
-  loadQuestion();
-};
-
-function showExtracted(attrs) {
-  const hints = Object.entries(attrs).filter(([k]) => !k.startsWith("_"));
-  $("extracted").textContent = hints.length
-    ? "Pre-filled from your input: " + hints.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")
-    : "";
-}
-
-// ---- Interview -------------------------------------------------------------
-async function loadQuestion() {
-  const data = await api(`/api/products/${productId}/next-question`);
-  $("progress").textContent = `Answered ${data.progress.answered} of ${data.progress.relevant} relevant questions`;
-  if (data.complete) {
-    $("question").innerHTML = `<p class="ok">Consultation complete — running assessment…</p>`;
-    return loadAssessment();
-  }
-  renderQuestion(data.question);
-}
-
-function renderQuestion(q) {
-  const box = $("question");
-  box.innerHTML = `
-    <div class="q-prompt">${q.prompt}</div>
-    <div class="q-reason">Why I'm asking: ${q.reason}</div>
-    <div class="q-cite">${q.citation}</div>
-    <div id="answer-area"></div>`;
-  const area = $("answer-area");
-
-  if (q.type === "bool") {
-    area.innerHTML = `<div class="choices">
-      <div class="choice" data-v="true">Yes</div>
-      <div class="choice" data-v="false">No</div></div>`;
-    area.querySelectorAll(".choice").forEach((el) => {
-      el.onclick = () => submit(q.key, el.dataset.v === "true");
-    });
-  } else if (q.type === "int") {
-    area.innerHTML = `<input id="int-in" type="number" placeholder="e.g. 3" />
-      <button id="int-go">Next</button>`;
-    $("int-go").onclick = () => {
-      const v = parseInt($("int-in").value, 10);
-      if (Number.isNaN(v)) return alert("Enter a number.");
-      submit(q.key, v);
-    };
-  } else if (q.type === "single") {
-    area.innerHTML = `<div class="choices">${q.choices
-      .map((c) => `<div class="choice" data-v="${c}">${c}</div>`)
-      .join("")}</div>`;
-    area.querySelectorAll(".choice").forEach((el) => {
-      el.onclick = () => submit(q.key, el.dataset.v);
-    });
-  } else if (q.type === "multi") {
-    const sel = new Set();
-    area.innerHTML = `<div class="choices">${q.choices
-      .map((c) => `<div class="choice" data-v="${c}">${c}</div>`)
-      .join("")}</div><button id="multi-go">Next</button>`;
-    area.querySelectorAll(".choice").forEach((el) => {
-      el.onclick = () => {
-        el.classList.toggle("sel");
-        el.classList.contains("sel") ? sel.add(el.dataset.v) : sel.delete(el.dataset.v);
-      };
-    });
-    $("multi-go").onclick = () => submit(q.key, [...sel]);
-  }
-}
-
-async function submit(key, value) {
-  await api(`/api/products/${productId}/answer`, {
-    method: "POST",
-    body: JSON.stringify({ key, value }),
-  });
-  loadQuestion();
-}
-
-// ---- Assessment ------------------------------------------------------------
-async function loadAssessment() {
-  const a = await api(`/api/products/${productId}/assessment`);
-  $("assessment").classList.remove("hidden");
-  const certBadge =
-    a.certificate_type === "CPC"
-      ? `<span class="badge cpc">CPC required</span>`
-      : a.certificate_type === "GCC"
-      ? `<span class="badge gcc">GCC required</span>`
-      : `<span class="badge">undetermined</span>`;
-
-  let html = `<p><strong>Certificate type:</strong> ${certBadge}</p>`;
-  if (a.third_party_testing_required) {
-    html += `<p class="gap">⚠ Third-party lab testing is required (see flagged rules below).</p>`;
-  }
-  html += `<p class="muted">${a.applicable_rules.length} applicable rule(s):</p>`;
-
-  for (const r of a.applicable_rules) {
-    html += `<div class="rule" data-cite="${encodeURIComponent(r.citation)}">
-      <h4>${r.title}
-        ${r.third_party_testing && !r.exemptions_met.length ? '<span class="badge test">lab test</span>' : ""}
-        ${r.exemptions_met.length ? '<span class="badge exempt">exemption</span>' : ""}
-      </h4>
-      <div class="cite">${r.citation}</div>
-      <div class="muted">${r.summary}</div>
-      ${r.exemptions_met
-        .map((e) => `<div class="exemption">Exemption available: ${e.summary} <br/><span class="cite">${e.citation}</span></div>`)
-        .join("")}
-      <button class="secondary btn-live" data-cite="${encodeURIComponent(r.citation)}">View live CFR text</button>
-      <div class="live-text"></div>
-    </div>`;
-  }
-  $("assessment-body").innerHTML = html;
-  $("assessment-body").querySelectorAll(".btn-live").forEach((btn) => {
-    btn.onclick = () => loadLiveText(btn);
-  });
-  $("btn-draft").classList.remove("hidden");
-}
-
-async function loadLiveText(btn) {
-  const cite = decodeURIComponent(btn.dataset.cite);
-  const box = btn.nextElementSibling;
-  box.innerHTML = `<span class="muted">Fetching ${cite} from eCFR…</span>`;
-  try {
-    const d = await api(`/api/ecfr/section?citation=${encodeURIComponent(cite)}`);
-    if (!d.ok) {
-      box.innerHTML = `<span class="gap">Live text unavailable: ${d.error}</span>`;
-      return;
-    }
-    box.innerHTML = `<div class="muted">Current as of ${d.current_as_of}${d._cached ? " (cached)" : ""} · <a href="${d.source_url}" target="_blank" rel="noopener">source</a></div>
-      <pre>${escapeHtml(d.heading ? d.heading + "\n\n" : "")}${escapeHtml(d.text)}${d.truncated ? "\n…(truncated)" : ""}</pre>`;
-  } catch (e) {
-    box.innerHTML = `<span class="gap">Lookup failed: ${e.message}</span>`;
-  }
-}
-
-function escapeHtml(s) {
-  return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-}
-
-$("btn-draft").onclick = async () => {
-  const out = await api(`/api/products/${productId}/draft`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-  $("draft").classList.remove("hidden");
-  const gaps = out.gap_analysis.outstanding;
-  let html = `<p><strong>${out.draft.certificate_type}</strong> draft generated ${out.draft.issued_on}</p>`;
-  html += `<pre>${JSON.stringify(out.draft, null, 2)}</pre>`;
-  html += `<h3 style="font-size:14px">Gap analysis</h3>`;
-  html += out.gap_analysis.ready_to_issue
-    ? `<p class="ok">✓ All required fields present — ready to finalize.</p>`
-    : gaps.map((g) => `<div class="gap">• ${g}</div>`).join("");
-  $("draft-body").innerHTML = html;
-};
-
-// ---- Learning loop ---------------------------------------------------------
 $("btn-report").onclick = async () => {
   const title = $("k-title").value.trim();
   if (!title) return alert("Give the rule a title.");
@@ -236,3 +337,6 @@ $("btn-report").onclick = async () => {
   }
   $("report-result").innerHTML = html;
 };
+
+// Boot
+showDashboard();

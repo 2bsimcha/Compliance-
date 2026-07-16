@@ -85,12 +85,61 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)) -> dic
 
 @app.get("/api/products")
 def list_products(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return [_product_dict(p) for p in db.scalars(select(Product).order_by(Product.created_at.desc()))]
+    active = _active_rules(db)
+    products = db.scalars(select(Product).order_by(Product.created_at.desc()))
+    return [_product_summary(p, active) for p in products]
+
+
+@app.get("/api/dashboard")
+def dashboard(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Aggregate portfolio stats across all products for the dashboard header."""
+    active = _active_rules(db)
+    summaries = [_product_summary(p, active) for p in db.scalars(select(Product))]
+    by_status: dict[str, int] = {}
+    by_cert: dict[str, int] = {}
+    for s in summaries:
+        by_status[s["status"]] = by_status.get(s["status"], 0) + 1
+        by_cert[s["certificate_type"]] = by_cert.get(s["certificate_type"], 0) + 1
+    return {
+        "total": len(summaries),
+        "by_status": by_status,
+        "by_certificate_type": by_cert,
+        "needing_testing": sum(1 for s in summaries if s["testing_required"]),
+        "interviews_incomplete": sum(1 for s in summaries if not s["interview_complete"]),
+        "with_drafts": sum(1 for s in summaries if s["certificate_count"] > 0),
+    }
 
 
 @app.get("/api/products/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _product_dict(_get(db, product_id))
+
+
+@app.delete("/api/products/{product_id}")
+def delete_product(product_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    product = _get(db, product_id)
+    db.delete(product)
+    db.commit()
+    return {"deleted": product_id}
+
+
+@app.get("/api/products/{product_id}/certificates")
+def list_certificates(product_id: int, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    _get(db, product_id)  # 404 if missing
+    certs = db.scalars(
+        select(Certificate).where(Certificate.product_id == product_id).order_by(Certificate.created_at.desc())
+    )
+    return [
+        {
+            "id": c.id,
+            "cert_type": c.cert_type,
+            "draft": c.draft,
+            "gap_analysis": c.gap_analysis,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "ready_to_issue": c.gap_analysis.get("ready_to_issue", False),
+        }
+        for c in certs
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -286,9 +335,38 @@ def _product_dict(p: Product) -> dict[str, Any]:
         "id": p.id,
         "name": p.name,
         "company_id": p.company_id,
+        "company_name": p.company.name if p.company else None,
         "attrs": p.attrs,
         "status": p.status,
         "source_input": p.source_input,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _product_summary(p: Product, active_rules: list[dict[str, Any]]) -> dict[str, Any]:
+    """A dashboard row: identity + computed compliance state for one product.
+
+    The assessment and interview progress are computed on the fly from the stored
+    attributes (no network, no persistence needed), so the dashboard always reflects
+    the current rule set — including any newly-verified community rules.
+    """
+    attrs = dict(p.attrs)
+    result = rules.assess(attrs, active_rules)
+    prog = interview.progress(attrs)
+    complete = interview.next_question(attrs) is None
+    return {
+        "id": p.id,
+        "name": p.name,
+        "company_name": p.company.name if p.company else None,
+        "status": p.status,
+        "certificate_type": result["certificate_type"],
+        "applicable_count": len(result["applicable_rules"]),
+        "testing_required": result["third_party_testing_required"],
+        "questions_answered": prog["answered"],
+        "questions_relevant": prog["relevant"],
+        "interview_complete": complete,
+        "certificate_count": len(p.certificates),
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
 
