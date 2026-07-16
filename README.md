@@ -30,6 +30,7 @@ Unlike the CPSC Regulatory Robot, this tool is:
 | Knowledge base | `app/data/knowledge_base.json` + `app/engine/knowledge.py` | Structured CPSC rule objects with citations, exemptions, and verification tiers |
 | Applicability engine | `app/engine/rules.py` | Matches product attributes → applicable rules + exemptions + certificate type |
 | Certificate drafter | `app/engine/drafter.py` | Drafts a GCC or CPC with all required elements + gap analysis |
+| **PDF export** | `app/engine/pdf.py` | Renders a drafted GCC/CPC to a printable PDF, with a DRAFT watermark + outstanding-items section when it isn't yet issuable |
 | Learning loop | `app/engine/knowledge.py` | Capture user-reported rules/exemptions into a review queue with verification tiers |
 | **Live eCFR** | `app/engine/ecfr.py` | Talks to the official eCFR API: Title 16 currency, live section text by citation, full-text search, and per-rule "refresh against source" |
 | Extraction | `app/engine/extract.py` | Pre-fills product attributes from pasted text / URL / test report — **Claude-backed** (structured output) with a heuristic fallback |
@@ -128,7 +129,10 @@ Dashboard API: `GET /api/products` (summaries), `GET /api/dashboard` (aggregates
    The interview is driven by the same predicate DSL the rules use.
 3. **Assessment** — once enough is known, the applicability engine returns the certificate
    type (GCC vs CPC), the list of applicable rules with citations, and any exemptions.
-4. **Draft** — generate a GCC/CPC draft with a gap analysis of what testing is still needed.
+4. **Draft** — generate a GCC/CPC draft with a gap analysis of what testing is still needed,
+   and **download it as a PDF** (`GET /api/products/{id}/certificates/{cert_id}/pdf`). An
+   unfinished certificate carries a visible **DRAFT** watermark and an outstanding-items
+   section, so it can't be mistaken for a final, issuable certificate.
 5. **Learn** — report a new rule/exemption; it enters the review queue as a structured object.
 
 ## Roadmap (post-MVP)

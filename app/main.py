@@ -20,13 +20,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
-from .engine import drafter, extract, interview, knowledge, rules
+from .engine import drafter, extract, interview, knowledge, pdf, rules
 from .engine.ecfr import ECFRClient, parse_citation
 from .models import Certificate, Company, EcfrCache, KnowledgeRule, Product
 from .schemas import AnswerIn, PartyIn, ProductCreate, ReportedRuleIn
@@ -140,6 +140,22 @@ def list_certificates(product_id: int, db: Session = Depends(get_db)) -> list[di
         }
         for c in certs
     ]
+
+
+@app.get("/api/products/{product_id}/certificates/{cert_id}/pdf")
+def certificate_pdf(product_id: int, cert_id: int, db: Session = Depends(get_db)) -> Response:
+    """Download a drafted certificate as a formatted PDF."""
+    product = _get(db, product_id)
+    cert = db.get(Certificate, cert_id)
+    if cert is None or cert.product_id != product_id:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    data = pdf.render_certificate_pdf(cert.draft, cert.gap_analysis)
+    filename = pdf.filename_for(product.name, cert.cert_type)
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------

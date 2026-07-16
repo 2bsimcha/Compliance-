@@ -269,6 +269,7 @@ async function loadDrafts() {
           ${c.ready_to_issue ? '<span class="badge gcc">ready</span>' : '<span class="badge test">gaps</span>'}
         </h4>
         <div class="muted">${c.created_at ? new Date(c.created_at).toLocaleString() : ""}</div>
+        <a class="secondary btn-pdf" href="/api/products/${productId}/certificates/${c.id}/pdf">Download PDF ↓</a>
         <details><summary class="muted">Show certificate JSON</summary><pre>${escapeHtml(JSON.stringify(c.draft, null, 2))}</pre></details>
         ${
           c.ready_to_issue
