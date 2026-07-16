@@ -70,6 +70,23 @@ uvicorn app.main:app --reload
 
 Then open http://127.0.0.1:8000
 
+### Authentication
+
+The whole instance can sit behind a single shared password. Set `APP_PASSWORD` to enable
+it (with it unset, auth is disabled for local dev):
+
+```bash
+export APP_PASSWORD=your-strong-password   # enables the login gate
+export APP_USERNAME=admin                  # optional, defaults to "admin"
+export SESSION_SECRET=$(openssl rand -hex 32)  # optional; stable secret across restarts
+```
+
+### Deploying to a live website
+
+See **[DEPLOY.md](DEPLOY.md)** for a step-by-step Render deployment (custom domain +
+HTTPS + persistent database), plus notes for Railway, Fly.io, or your own server. A
+`render.yaml` Blueprint is included.
+
 Run the tests:
 
 ```bash

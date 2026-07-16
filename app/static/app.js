@@ -3,6 +3,11 @@
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts = {}) => {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (res.status === 401) {
+    // Session expired or not signed in — bounce to the login page.
+    window.location.href = "/login";
+    throw new Error("Not authenticated");
+  }
   if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
   return res.json();
 };
@@ -284,6 +289,16 @@ async function loadDrafts() {
 // ===========================================================================
 // Global panels: eCFR + learning loop + currency
 // ===========================================================================
+// Show the logout link only when auth is actually enabled on the server.
+(async function showLogout() {
+  try {
+    const h = await fetch("/healthz").then((r) => r.json());
+    if (h.auth) $("logout-link").classList.remove("hidden");
+  } catch (e) {
+    /* ignore */
+  }
+})();
+
 (async function showCurrency() {
   try {
     const d = await api("/api/ecfr/currency");

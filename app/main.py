@@ -19,12 +19,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import auth
 from .database import get_db, init_db
 from .engine import drafter, extract, interview, knowledge, pdf, rules
 from .engine.ecfr import ECFRClient, parse_citation
@@ -39,6 +41,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CPSC Compliance Consultant", version="0.1.0", lifespan=lifespan)
+
+# Middleware order: added last runs outermost, so SessionMiddleware (added last) wraps
+# AuthMiddleware, guaranteeing request.session is populated before the auth check.
+app.add_middleware(auth.AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth.SESSION_SECRET,
+    same_site="lax",
+    https_only=auth.SESSION_HTTPS_ONLY,
+)
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -389,6 +401,59 @@ def _product_summary(p: Product, active_rules: list[dict[str, Any]]) -> dict[str
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
+
+
+# ---------------------------------------------------------------------------
+# Auth + health (public routes)
+# ---------------------------------------------------------------------------
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    """Liveness probe (used by the host's health check). Also reports whether auth is on
+    so the frontend can show a logout link."""
+    return {"status": "ok", "auth": auth.AUTH_ENABLED}
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(error: bool = False) -> str:
+    return _login_html(error)
+
+
+@app.post("/login")
+def login_submit(request: Request, username: str = Form(""), password: str = Form("")):
+    if auth.check_credentials(username, password):
+        request.session["authed"] = True
+        return RedirectResponse("/", status_code=303)
+    return HTMLResponse(_login_html(error=True), status_code=401)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
+def _login_html(error: bool = False) -> str:
+    msg = '<p class="err">Incorrect username or password.</p>' if error else ""
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sign in - CPSC Compliance Consultant</title>
+<link rel="stylesheet" href="/static/styles.css"/>
+<style>
+  body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; }}
+  .login {{ width:100%; max-width:360px; }}
+  .err {{ color:var(--danger); font-size:13px; }}
+  form button {{ width:100%; }}
+</style></head><body>
+<main class="login"><section class="card">
+  <h1 style="font-size:20px">CPSC Compliance Consultant</h1>
+  <p class="muted">Sign in to continue.</p>
+  {msg}
+  <form method="post" action="/login">
+    <label>Username <input name="username" autocomplete="username" autofocus/></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password"/></label>
+    <button type="submit">Sign in</button>
+  </form>
+</section></main></body></html>"""
 
 
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")

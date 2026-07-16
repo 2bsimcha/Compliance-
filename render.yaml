@@ -1,0 +1,45 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: Render Dashboard → New → Blueprint → connect this repo. See DEPLOY.md.
+services:
+  - type: web
+    name: cpsc-compliance
+    runtime: python
+    # SQLite + a persistent disk requires a paid instance. For a free first deploy,
+    # remove the `disk:` block below and switch DATABASE_URL to a managed Postgres
+    # (see DEPLOY.md) — the free web tier has NO persistent disk, so a SQLite file
+    # would reset on every deploy.
+    plan: starter
+    # Keep a single instance: SQLite is a single-writer file DB. Only scale out after
+    # moving to Postgres.
+    numInstances: 1
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.15"
+      # REQUIRED — the shared login password. Set this in the Render dashboard; without
+      # it the instance is publicly accessible.
+      - key: APP_PASSWORD
+        sync: false
+      - key: APP_USERNAME
+        value: admin
+      # Signs the session cookie. Render generates a stable value so logins survive
+      # restarts.
+      - key: SESSION_SECRET
+        generateValue: true
+      # Mark the session cookie Secure — Render terminates HTTPS at the edge.
+      - key: SESSION_HTTPS_ONLY
+        value: "true"
+      # Optional — enables Claude-backed extraction. Without it, intake uses heuristics.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: COMPLIANCE_LLM_MODEL
+        value: claude-opus-4-8
+      # SQLite on the persistent disk mounted below.
+      - key: DATABASE_URL
+        value: sqlite:////var/data/compliance.db
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
