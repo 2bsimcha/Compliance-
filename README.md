@@ -31,6 +31,7 @@ Unlike the CPSC Regulatory Robot, this tool is:
 | Applicability engine | `app/engine/rules.py` | Matches product attributes → applicable rules + exemptions + certificate type |
 | Certificate drafter | `app/engine/drafter.py` | Drafts a GCC or CPC with all required elements + gap analysis |
 | **PDF export** | `app/engine/pdf.py` | Renders a drafted GCC/CPC to a printable PDF, with a DRAFT watermark + outstanding-items section when it isn't yet issuable |
+| **Test-report parsing** | `app/engine/report.py` | Upload a lab test-report PDF → extract text → parse tested standards + results → **coverage gap analysis** vs. the testing the assessment requires (covered / missing / failed) |
 | Learning loop | `app/engine/knowledge.py` | Capture user-reported rules/exemptions into a review queue with verification tiers |
 | **Live eCFR** | `app/engine/ecfr.py` | Talks to the official eCFR API: Title 16 currency, live section text by citation, full-text search, and per-rule "refresh against source" |
 | Extraction | `app/engine/extract.py` | Pre-fills product attributes from pasted text / URL / test report — **Claude-backed** (structured output) with a heuristic fallback |
@@ -160,7 +161,12 @@ Dashboard API: `GET /api/products` (summaries), `GET /api/dashboard` (aggregates
    and **download it as a PDF** (`GET /api/products/{id}/certificates/{cert_id}/pdf`). An
    unfinished certificate carries a visible **DRAFT** watermark and an outstanding-items
    section, so it can't be mistaken for a final, issuable certificate.
-5. **Learn** — report a new rule/exemption; it enters the review queue as a structured object.
+5. **Test reports** — upload a lab test-report PDF on the product. It's parsed (Claude
+   structured output, heuristic fallback) into tested standards + results, then
+   **coverage-checked** against the rules that require third-party testing: which
+   required tests are covered, which are still missing, and any that were tested but
+   *failed*. (Text-based PDFs; OCR for scanned reports is a future addition.)
+6. **Learn** — report a new rule/exemption; it enters the review queue as a structured object.
 
 ## Roadmap (post-MVP)
 

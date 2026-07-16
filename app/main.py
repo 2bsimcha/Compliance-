@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -28,9 +28,9 @@ from sqlalchemy.orm import Session
 
 from . import auth
 from .database import get_db, init_db
-from .engine import drafter, extract, interview, knowledge, pdf, rules
+from .engine import drafter, extract, interview, knowledge, pdf, report, rules
 from .engine.ecfr import ECFRClient, parse_citation
-from .models import Certificate, Company, EcfrCache, KnowledgeRule, Product
+from .models import Certificate, Company, EcfrCache, KnowledgeRule, Product, TestReport
 from .schemas import AnswerIn, PartyIn, ProductCreate, ReportedRuleIn
 
 
@@ -168,6 +168,60 @@ def certificate_pdf(product_id: int, cert_id: int, db: Session = Depends(get_db)
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Test reports (upload lab PDF -> parse -> coverage gap analysis)
+# ---------------------------------------------------------------------------
+@app.post("/api/products/{product_id}/test-reports")
+async def upload_test_report(
+    product_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Upload a lab test-report PDF: extract text, parse it, and compute coverage against
+    the product's required third-party testing."""
+    product = _get(db, product_id)
+    data = await file.read()
+    text = report.extract_text(data)
+    findings = report.parse_report(text)
+    assessment = rules.assess(dict(product.attrs), _active_rules(db))
+    cov = report.coverage(assessment["applicable_rules"], findings)
+    if not text:
+        findings["_note"] = "No extractable text (scanned image PDF?). OCR not enabled in this MVP."
+
+    tr = TestReport(product_id=product.id, filename=file.filename or "report.pdf", findings=findings, coverage=cov)
+    db.add(tr)
+    db.commit()
+    db.refresh(tr)
+    return _report_dict(tr)
+
+
+@app.get("/api/products/{product_id}/test-reports")
+def list_test_reports(product_id: int, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    _get(db, product_id)
+    reports = db.scalars(
+        select(TestReport).where(TestReport.product_id == product_id).order_by(TestReport.created_at.desc())
+    )
+    return [_report_dict(r) for r in reports]
+
+
+@app.delete("/api/products/{product_id}/test-reports/{report_id}")
+def delete_test_report(product_id: int, report_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    tr = db.get(TestReport, report_id)
+    if tr is None or tr.product_id != product_id:
+        raise HTTPException(status_code=404, detail="Test report not found")
+    db.delete(tr)
+    db.commit()
+    return {"deleted": report_id}
+
+
+def _report_dict(tr: TestReport) -> dict[str, Any]:
+    return {
+        "id": tr.id,
+        "filename": tr.filename,
+        "findings": tr.findings,
+        "coverage": tr.coverage,
+        "created_at": tr.created_at.isoformat() if tr.created_at else None,
+    }
 
 
 # ---------------------------------------------------------------------------

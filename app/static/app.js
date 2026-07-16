@@ -136,7 +136,10 @@ async function openProduct(id, prefetchedAttrs) {
   ["pd-assessment", "pd-drafts"].forEach((s) => $(s).classList.add("hidden"));
   $("btn-draft").classList.add("hidden");
   showExtracted(prefetchedAttrs || p.attrs);
+  $("report-file").value = "";
+  $("report-status").textContent = "";
   loadDrafts();
+  loadReports();
   loadQuestion();
 }
 
@@ -284,6 +287,91 @@ async function loadDrafts() {
       </div>`;
     })
     .join("");
+}
+
+// ---- Test reports ----------------------------------------------------------
+$("btn-upload-report").onclick = async () => {
+  const input = $("report-file");
+  if (!input.files.length) return alert("Choose a PDF test report first.");
+  const fd = new FormData();
+  fd.append("file", input.files[0]);
+  $("report-status").textContent = "Uploading and analyzing…";
+  try {
+    const res = await fetch(`/api/products/${productId}/test-reports`, { method: "POST", body: fd });
+    if (res.status === 401) return (window.location.href = "/login");
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    input.value = "";
+    $("report-status").textContent = "";
+    loadReports();
+  } catch (e) {
+    $("report-status").innerHTML = `<span class="gap">${e.message}</span>`;
+  }
+};
+
+async function loadReports() {
+  const reports = await api(`/api/products/${productId}/test-reports`);
+  if (!reports.length) {
+    $("reports-body").innerHTML = "";
+    return;
+  }
+  $("reports-body").innerHTML = reports.map(reportCard).join("");
+  $("reports-body").querySelectorAll("[data-del-report]").forEach((el) => {
+    el.onclick = async () => {
+      if (!confirm("Delete this test report?")) return;
+      await api(`/api/products/${productId}/test-reports/${el.dataset.delReport}`, { method: "DELETE" });
+      loadReports();
+    };
+  });
+}
+
+function reportCard(r) {
+  const f = r.findings || {};
+  const c = r.coverage || {};
+  const meta = [f.lab_name, f.cpsc_lab_code, f.report_date].filter(Boolean).join(" · ");
+
+  let cov;
+  if (!c.required_count) {
+    cov = `<p class="muted">This product's assessment requires no third-party lab testing.</p>`;
+  } else if (c.fully_covered) {
+    cov = `<p class="ok">✓ All ${c.required_count} required test(s) covered by this report.</p>`;
+  } else {
+    cov = `<p class="muted">${(c.covered || []).length} of ${c.required_count} required test(s) covered.</p>`;
+  }
+
+  const line = (item, cls, label) =>
+    `<div class="${cls}">${label}: ${item.title} <span class="cite">${item.citation}</span>${
+      item.tested_as ? ` — tested as ${item.tested_as}` : ""
+    }</div>`;
+
+  const failed = (c.failed || []).map((i) => line(i, "gap", "⚠ FAILED")).join("");
+  const missing = (c.missing || []).map((i) => line(i, "gap", "Missing")).join("");
+  const covered = (c.covered || []).map((i) => line(i, "ok", "✓ Covered")).join("");
+
+  const tested = (f.tested || [])
+    .map((t) => {
+      const badge =
+        t.result === "pass" ? '<span class="badge gcc">pass</span>'
+        : t.result === "fail" ? '<span class="badge cpc">fail</span>'
+        : '<span class="badge">—</span>';
+      return `<div class="muted">${t.standard} ${badge}${t.notes ? " · " + t.notes : ""}</div>`;
+    })
+    .join("");
+
+  const note = f._note ? `<div class="gap">${f._note}</div>` : "";
+  const src = f._source === "heuristic"
+    ? `<div class="muted" style="font-size:11px">Parsed without LLM (set ANTHROPIC_API_KEY for full extraction).</div>`
+    : "";
+
+  return `<div class="rule">
+    <h4>${escapeHtml(r.filename)}
+      <button class="secondary" data-del-report="${r.id}" style="float:right;padding:4px 10px;font-size:12px">Delete</button>
+    </h4>
+    ${meta ? `<div class="muted">${escapeHtml(meta)}</div>` : ""}
+    ${cov}
+    ${failed}${missing}${covered}
+    ${tested ? `<details><summary class="muted">Tested standards (${(f.tested || []).length})</summary>${tested}</details>` : ""}
+    ${note}${src}
+  </div>`;
 }
 
 // ===========================================================================

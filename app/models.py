@@ -42,6 +42,7 @@ class Product(Base):
 
     company: Mapped[Company | None] = relationship(back_populates="products")
     certificates: Mapped[list["Certificate"]] = relationship(back_populates="product", cascade="all, delete-orphan")
+    test_reports: Mapped[list["TestReport"]] = relationship(back_populates="product", cascade="all, delete-orphan")
 
 
 class Certificate(Base):
@@ -55,6 +56,22 @@ class Certificate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     product: Mapped[Product] = relationship(back_populates="certificates")
+
+
+class TestReport(Base):
+    """An uploaded lab test report + its structured findings and coverage analysis."""
+
+    __tablename__ = "test_reports"
+    __test__ = False  # not a pytest test class
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    filename: Mapped[str] = mapped_column(String(300))
+    findings: Mapped[dict[str, Any]] = mapped_column(JSONType)   # structured parse result
+    coverage: Mapped[dict[str, Any]] = mapped_column(JSONType)   # covered / missing / failed
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    product: Mapped["Product"] = relationship(back_populates="test_reports")
 
 
 class EcfrCache(Base):
