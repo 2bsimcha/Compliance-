@@ -14,8 +14,10 @@ POST   /api/knowledge/report              capture a user-reported rule (learning
 """
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -25,17 +27,30 @@ from sqlalchemy.orm import Session
 
 from .database import get_db, init_db
 from .engine import drafter, extract, interview, knowledge, rules
-from .models import Certificate, Company, KnowledgeRule, Product
+from .engine.ecfr import ECFRClient, parse_citation
+from .models import Certificate, Company, EcfrCache, KnowledgeRule, Product
 from .schemas import AnswerIn, PartyIn, ProductCreate, ReportedRuleIn
 
-app = FastAPI(title="CPSC Compliance Consultant", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="CPSC Compliance Consultant", version="0.1.0", lifespan=lifespan)
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
+# Lazily-created shared eCFR client. Tests override this with a mock-transport client.
+ecfr_client: ECFRClient | None = None
 
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
+
+def get_ecfr() -> ECFRClient:
+    global ecfr_client
+    if ecfr_client is None:
+        ecfr_client = ECFRClient()
+    return ecfr_client
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +190,77 @@ def report_rule(payload: ReportedRuleIn, db: Session = Depends(get_db)) -> dict[
         "follow_up_questions": follow_ups,
         "note": "Filed in the review queue as community_unverified. It will not affect assessments until a reviewer verifies it.",
     }
+
+
+# ---------------------------------------------------------------------------
+# eCFR — live Code of Federal Regulations lookups
+# ---------------------------------------------------------------------------
+@app.get("/api/ecfr/currency")
+def ecfr_currency(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """How current Title 16 (CPSC's title) is in eCFR."""
+    return _cached(db, "currency:title-16", 24, lambda: get_ecfr().title_currency(16))
+
+
+@app.get("/api/ecfr/section")
+def ecfr_section(citation: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Fetch the live CFR text for a citation, e.g. ?citation=16 CFR 1303."""
+    ref = parse_citation(citation)
+    if ref is None:
+        return {"ok": False, "error": "No CFR reference found in citation.", "citation": citation}
+    return _cached(db, f"section:{ref.label}", 24, lambda: get_ecfr().section_text(ref))
+
+
+@app.get("/api/ecfr/search")
+def ecfr_search(q: str, per_page: int = 5, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Full-text search the CFR (scoped to Title 16 by default)."""
+    return _cached(db, f"search:{per_page}:{q}", 6, lambda: get_ecfr().search(q, per_page=per_page))
+
+
+@app.post("/api/knowledge/refresh")
+def refresh_knowledge(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Refresh every seed rule against its live eCFR source (currency + text).
+
+    This is the mechanism that keeps the knowledge base honest: it reports which
+    citations still resolve and how current they are, so stale rules get flagged.
+    """
+    client = get_ecfr()
+    statuses = []
+    for rule in knowledge.load_seed_rules():
+        status = _cached(
+            db, f"refresh:{rule['id']}", 24, lambda r=rule: client.refresh_rule(r)
+        )
+        statuses.append(status)
+    resolved = sum(1 for s in statuses if s.get("resolved"))
+    return {
+        "refreshed": len(statuses),
+        "resolved": resolved,
+        "unresolved": len(statuses) - resolved,
+        "statuses": statuses,
+    }
+
+
+def _cached(db: Session, key: str, ttl_hours: int, producer: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    """Return a cached eCFR payload if fresh; otherwise call ``producer`` and cache it.
+
+    Failed/unreachable results (``ok`` is False, or ``resolved`` is False) are NOT
+    cached, so a transient network block doesn't get pinned for the whole TTL.
+    """
+    entry = db.scalar(select(EcfrCache).where(EcfrCache.cache_key == key))
+    if entry is not None:
+        age = datetime.now(timezone.utc) - entry.fetched_at.replace(tzinfo=timezone.utc)
+        if age < timedelta(hours=ttl_hours):
+            return {**entry.payload, "_cached": True}
+
+    payload = producer()
+    cacheable = payload.get("ok", True) and payload.get("resolved", True)
+    if cacheable:
+        if entry is None:
+            db.add(EcfrCache(cache_key=key, payload=payload))
+        else:
+            entry.payload = payload
+            entry.fetched_at = datetime.now(timezone.utc)
+        db.commit()
+    return payload
 
 
 # ---------------------------------------------------------------------------

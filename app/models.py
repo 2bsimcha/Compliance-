@@ -53,6 +53,21 @@ class Certificate(Base):
     product: Mapped[Product] = relationship(back_populates="certificates")
 
 
+class EcfrCache(Base):
+    """Cache of eCFR responses, keyed by a canonical request key.
+
+    Avoids re-fetching (and re-hammering) eCFR for the same citation/search. The
+    endpoints treat entries older than a TTL as stale and refetch.
+    """
+
+    __tablename__ = "ecfr_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cache_key: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class KnowledgeRule(Base):
     """User-reported rules/exemptions captured by the learning loop.
 

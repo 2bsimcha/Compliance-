@@ -30,8 +30,33 @@ Unlike the CPSC Regulatory Robot, this tool is:
 | Applicability engine | `app/engine/rules.py` | Matches product attributes → applicable rules + exemptions + certificate type |
 | Certificate drafter | `app/engine/drafter.py` | Drafts a GCC or CPC with all required elements + gap analysis |
 | Learning loop | `app/engine/knowledge.py` | Capture user-reported rules/exemptions into a review queue with verification tiers |
+| **Live eCFR** | `app/engine/ecfr.py` | Talks to the official eCFR API: Title 16 currency, live section text by citation, full-text search, and per-rule "refresh against source" |
 | Extraction | `app/engine/extract.py` | Pre-fills product attributes from pasted text / URL / test report (LLM-pluggable) |
 | API + UI | `app/main.py`, `app/static/` | FastAPI backend + a zero-build web UI |
+
+## Live eCFR integration
+
+`app/engine/ecfr.py` wires the tool to the official, free **eCFR API**
+(`https://www.ecfr.gov`) so citations are backed by live regulation text, not a static
+copy:
+
+| Endpoint | What it returns |
+|----------|-----------------|
+| `GET /api/ecfr/currency` | How current Title 16 (CPSC) is — the date eCFR content is up to date as of |
+| `GET /api/ecfr/section?citation=16 CFR 1303` | The live CFR text for a citation (XML flattened to readable text) |
+| `GET /api/ecfr/search?q=lead in paint` | Full-text CFR search, scoped to Title 16 |
+| `POST /api/knowledge/refresh` | Refreshes every seed rule against its live source; reports which citations still resolve and how current they are |
+
+Design guarantees:
+
+- **Graceful degradation.** Every eCFR call returns `{"ok": false, "error": ...}` instead
+  of raising, so a blocked host or an eCFR outage never breaks assessments (which don't
+  depend on the network). If your environment's egress policy blocks `ecfr.gov`, the UI
+  simply shows "live lookups unavailable" and everything else keeps working.
+- **Caching.** Responses are cached in `ecfr_cache` (SQLite) with a TTL, so eCFR isn't
+  hammered; failures are never cached.
+- **Fully testable offline.** The HTTP client is injectable, so the whole integration is
+  tested with `httpx.MockTransport` — no live network needed (`tests/test_ecfr*.py`).
 
 ## Run it
 

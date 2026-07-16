@@ -10,6 +10,7 @@
   <header>
     <h1>CPSC Compliance Consultant <span class="tag">MVP</span></h1>
     <p class="disclaimer">Guidance only — not legal advice. Children's Product Certificates require third-party lab testing.</p>
+    <p id="ecfr-currency" class="muted">Checking eCFR currency…</p>
   </header>
 
   <main>
@@ -47,6 +48,15 @@
     <section class="card hidden" id="draft">
       <h2>4 · Certificate draft</h2>
       <div id="draft-body"></div>
+    </section>
+
+    <!-- eCFR live lookup -->
+    <section class="card" id="ecfr">
+      <h2>Look up live CFR text</h2>
+      <p class="muted">Search the current Code of Federal Regulations (Title 16) straight from eCFR.</p>
+      <label>Search regulations <input id="e-query" placeholder="e.g. lead in paint, small parts, phthalates" /></label>
+      <button id="btn-ecfr-search">Search eCFR →</button>
+      <div id="ecfr-results"></div>
     </section>
 
     <!-- Learning loop -->

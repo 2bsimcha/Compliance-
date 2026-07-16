@@ -12,6 +12,42 @@ const api = async (path, opts = {}) => {
 
 let productId = null;
 
+// ---- eCFR currency banner --------------------------------------------------
+(async function showCurrency() {
+  try {
+    const d = await api("/api/ecfr/currency");
+    $("ecfr-currency").textContent = d.ok
+      ? `eCFR Title 16 (CPSC) current as of ${d.up_to_date_as_of}${d._cached ? " · cached" : ""}`
+      : `eCFR live lookups unavailable here: ${d.error}`;
+  } catch (e) {
+    $("ecfr-currency").textContent = "eCFR live lookups unavailable in this environment.";
+  }
+})();
+
+// ---- eCFR search -----------------------------------------------------------
+$("btn-ecfr-search").onclick = async () => {
+  const q = $("e-query").value.trim();
+  if (!q) return;
+  $("ecfr-results").innerHTML = `<span class="muted">Searching eCFR…</span>`;
+  try {
+    const d = await api(`/api/ecfr/search?q=${encodeURIComponent(q)}`);
+    if (!d.ok) return ($("ecfr-results").innerHTML = `<span class="gap">${d.error}</span>`);
+    $("ecfr-results").innerHTML =
+      `<p class="muted">${d.total ?? d.results.length} result(s)</p>` +
+      d.results
+        .map(
+          (r) => `<div class="rule">
+            <h4>${r.heading || r.citation || ""}</h4>
+            <div class="muted">${r.excerpt || ""}</div>
+            ${r.url ? `<a class="cite" href="${r.url}" target="_blank" rel="noopener">${r.url}</a>` : ""}
+          </div>`
+        )
+        .join("");
+  } catch (e) {
+    $("ecfr-results").innerHTML = `<span class="gap">${e.message}</span>`;
+  }
+};
+
 // ---- Intake ----------------------------------------------------------------
 $("btn-create").onclick = async () => {
   const name = $("p-name").value.trim();
@@ -121,7 +157,7 @@ async function loadAssessment() {
   html += `<p class="muted">${a.applicable_rules.length} applicable rule(s):</p>`;
 
   for (const r of a.applicable_rules) {
-    html += `<div class="rule">
+    html += `<div class="rule" data-cite="${encodeURIComponent(r.citation)}">
       <h4>${r.title}
         ${r.third_party_testing && !r.exemptions_met.length ? '<span class="badge test">lab test</span>' : ""}
         ${r.exemptions_met.length ? '<span class="badge exempt">exemption</span>' : ""}
@@ -131,10 +167,36 @@ async function loadAssessment() {
       ${r.exemptions_met
         .map((e) => `<div class="exemption">Exemption available: ${e.summary} <br/><span class="cite">${e.citation}</span></div>`)
         .join("")}
+      <button class="secondary btn-live" data-cite="${encodeURIComponent(r.citation)}">View live CFR text</button>
+      <div class="live-text"></div>
     </div>`;
   }
   $("assessment-body").innerHTML = html;
+  $("assessment-body").querySelectorAll(".btn-live").forEach((btn) => {
+    btn.onclick = () => loadLiveText(btn);
+  });
   $("btn-draft").classList.remove("hidden");
+}
+
+async function loadLiveText(btn) {
+  const cite = decodeURIComponent(btn.dataset.cite);
+  const box = btn.nextElementSibling;
+  box.innerHTML = `<span class="muted">Fetching ${cite} from eCFR…</span>`;
+  try {
+    const d = await api(`/api/ecfr/section?citation=${encodeURIComponent(cite)}`);
+    if (!d.ok) {
+      box.innerHTML = `<span class="gap">Live text unavailable: ${d.error}</span>`;
+      return;
+    }
+    box.innerHTML = `<div class="muted">Current as of ${d.current_as_of}${d._cached ? " (cached)" : ""} · <a href="${d.source_url}" target="_blank" rel="noopener">source</a></div>
+      <pre>${escapeHtml(d.heading ? d.heading + "\n\n" : "")}${escapeHtml(d.text)}${d.truncated ? "\n…(truncated)" : ""}</pre>`;
+  } catch (e) {
+    box.innerHTML = `<span class="gap">Lookup failed: ${e.message}</span>`;
+  }
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
 $("btn-draft").onclick = async () => {
