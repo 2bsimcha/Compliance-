@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CPSC Compliance Consultant</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>CPSC Compliance Consultant <span class="tag">MVP</span></h1>
+    <p class="disclaimer">Guidance only — not legal advice. Children's Product Certificates require third-party lab testing.</p>
+  </header>
+
+  <main>
+    <!-- Intake -->
+    <section class="card" id="intake">
+      <h2>1 · New product intake</h2>
+      <label>Product name
+        <input id="p-name" placeholder="e.g. Wooden stacking rings" />
+      </label>
+      <label>Company (optional)
+        <input id="p-company" placeholder="Acme Toys" />
+      </label>
+      <label>Paste a description, URL, or test report (optional — pre-fills the interview)
+        <textarea id="p-source" rows="3" placeholder="Plush dinosaur toy for ages 3+, polyester fabric, printed eyes..."></textarea>
+      </label>
+      <button id="btn-create">Start consultation →</button>
+    </section>
+
+    <!-- Interview -->
+    <section class="card hidden" id="interview">
+      <h2>2 · Consultation <span id="prod-label" class="muted"></span></h2>
+      <div id="progress" class="muted"></div>
+      <div id="question"></div>
+      <div id="extracted" class="extracted"></div>
+    </section>
+
+    <!-- Assessment -->
+    <section class="card hidden" id="assessment">
+      <h2>3 · Compliance assessment</h2>
+      <div id="assessment-body"></div>
+      <button id="btn-draft" class="hidden">Draft certificate →</button>
+    </section>
+
+    <!-- Draft -->
+    <section class="card hidden" id="draft">
+      <h2>4 · Certificate draft</h2>
+      <div id="draft-body"></div>
+    </section>
+
+    <!-- Learning loop -->
+    <section class="card" id="learn">
+      <h2>Teach the knowledge base</h2>
+      <p class="muted">Know about a new law or exemption? File it. It enters a review queue as <em>community-unverified</em> and won't affect assessments until verified.</p>
+      <label>Title <input id="k-title" placeholder="New exemption for recycled PET in toys" /></label>
+      <label>Citation <input id="k-citation" placeholder="16 CFR 1307.x / Fed. Reg. doc no." /></label>
+      <label>Summary <textarea id="k-summary" rows="2"></textarea></label>
+      <label>Source URL <input id="k-source" placeholder="https://www.federalregister.gov/..." /></label>
+      <button id="btn-report">File knowledge →</button>
+      <div id="report-result"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

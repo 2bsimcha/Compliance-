@@ -1,0 +1,206 @@
+{
+  "$comment": "Seed CPSC knowledge base. Each entry is a structured rule object. Citations are real; scope predicates are simplified for the MVP decision tree. verification_tier: 'official' = sourced from statute/CFR; 'community_verified'/'community_unverified' come from the learning loop.",
+  "rules": [
+    {
+      "id": "lead-content-substrate",
+      "title": "Total lead content limit (children's products)",
+      "category": "chemical",
+      "citation": "15 U.S.C. 1278a; 16 CFR 1500.87",
+      "standard": "CPSIA sec. 101",
+      "summary": "Children's products may not contain more than 100 ppm total lead in accessible component parts.",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"attr": "is_childrens_product", "op": "eq", "value": true},
+      "exemptions": [
+        {
+          "id": "lead-natural-materials",
+          "citation": "16 CFR 1500.91",
+          "summary": "Certain untreated/unadulterated natural materials (e.g., wood, cotton, wool, some gemstones) are determined not to exceed the lead limit and do not require third-party lead testing.",
+          "applies_when": {"any": [
+            {"attr": "materials", "op": "contains", "value": "untreated_wood"},
+            {"attr": "materials", "op": "contains", "value": "natural_fiber"}
+          ]}
+        }
+      ],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1500/section-1500.87"
+    },
+    {
+      "id": "lead-in-paint",
+      "title": "Lead in paint / surface coatings",
+      "category": "chemical",
+      "citation": "16 CFR 1303",
+      "standard": "CPSIA sec. 101(f)",
+      "summary": "Paint and similar surface coatings on children's products (and certain furniture) may not exceed 90 ppm lead.",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"attr": "has_paint_or_coating", "op": "eq", "value": true}
+      ]},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1303"
+    },
+    {
+      "id": "phthalates",
+      "title": "Phthalates limit (children's toys & child-care articles)",
+      "category": "chemical",
+      "citation": "16 CFR 1307",
+      "standard": "CPSIA sec. 108",
+      "summary": "Eight specified phthalates are each limited to 0.1% (1000 ppm) in children's toys and child-care articles containing plasticized component parts.",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"any": [
+          {"attr": "product_category", "op": "eq", "value": "toy"},
+          {"attr": "is_child_care_article", "op": "eq", "value": true}
+        ]},
+        {"attr": "materials", "op": "contains", "value": "plastic"}
+      ]},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1307"
+    },
+    {
+      "id": "astm-f963-toy-safety",
+      "title": "ASTM F963 — Standard Consumer Safety Specification for Toy Safety",
+      "category": "mechanical",
+      "citation": "16 CFR 1250; ASTM F963",
+      "standard": "ASTM F963",
+      "summary": "Toys intended for children 14 and under must comply with ASTM F963 (mechanical/physical, flammability, and certain chemical requirements).",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"attr": "product_category", "op": "eq", "value": "toy"}
+      ]},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1250"
+    },
+    {
+      "id": "small-parts",
+      "title": "Small parts / choking hazard",
+      "category": "mechanical",
+      "citation": "16 CFR 1501",
+      "standard": "16 CFR 1501",
+      "summary": "Toys and articles intended for children under 3 must not contain small parts that fit in the small-parts test cylinder (choking hazard).",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"attr": "intended_age_max", "op": "lte", "value": 3},
+        {"attr": "has_small_parts", "op": "eq", "value": true}
+      ]},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1501"
+    },
+    {
+      "id": "tracking-label",
+      "title": "Tracking label requirement",
+      "category": "labeling",
+      "citation": "15 U.S.C. 2063(a)(5)",
+      "standard": "CPSIA sec. 103",
+      "summary": "Children's products must bear a permanent, distinguishing tracking label with manufacturer info, location and date of production, and cohort/batch information.",
+      "cert_required": "CPC",
+      "third_party_testing": false,
+      "applies_when": {"attr": "is_childrens_product", "op": "eq", "value": true},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.cpsc.gov/Business--Manufacturing/Business-Education/Tracking-Label"
+    },
+    {
+      "id": "button-battery-reeses-law",
+      "title": "Button/coin cell batteries (Reese's Law)",
+      "category": "mechanical",
+      "citation": "16 CFR 1263; ASTM F3300",
+      "standard": "Reese's Law (Pub. L. 117-171)",
+      "summary": "Consumer products containing button or coin cell batteries must have secure battery compartments and warning labeling per the safety standard.",
+      "cert_required": "GCC_or_CPC",
+      "third_party_testing": true,
+      "applies_when": {"attr": "has_button_batteries", "op": "eq", "value": true},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1263"
+    },
+    {
+      "id": "magnets",
+      "title": "High-powered magnets",
+      "category": "mechanical",
+      "citation": "16 CFR 1262; ASTM F3458",
+      "standard": "16 CFR 1262",
+      "summary": "Products with loose or separable magnets that are small enough to be swallowed must meet flux-index limits.",
+      "cert_required": "GCC_or_CPC",
+      "third_party_testing": true,
+      "applies_when": {"attr": "has_loose_magnets", "op": "eq", "value": true},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1262"
+    },
+    {
+      "id": "sleep-related-infant-products",
+      "title": "Infant sleep products safety standard",
+      "category": "mechanical",
+      "citation": "16 CFR 1236",
+      "standard": "16 CFR 1236",
+      "summary": "Infant sleep products must meet the applicable CPSC durable infant/toddler product standard.",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"attr": "is_sleep_related", "op": "eq", "value": true}
+      ]},
+      "exemptions": [],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-B/part-1236"
+    },
+    {
+      "id": "clothing-flammability",
+      "title": "Flammability of clothing textiles",
+      "category": "flammability",
+      "citation": "16 CFR 1610",
+      "standard": "16 CFR 1610",
+      "summary": "Wearing apparel textiles must meet general flammability requirements (Class 1 normal flammability).",
+      "cert_required": "GCC",
+      "third_party_testing": false,
+      "applies_when": {"attr": "product_category", "op": "eq", "value": "apparel"},
+      "exemptions": [
+        {
+          "id": "flammability-exempt-fabrics",
+          "citation": "16 CFR 1610.1(d)",
+          "summary": "Certain fabrics (e.g., plain surface fabrics >= 2.6 oz/yd2, and all fabrics of acrylic, modacrylic, nylon, olefin, polyester, wool) are exempt from testing.",
+          "applies_when": {"attr": "fabric_exempt_class", "op": "eq", "value": true}
+        }
+      ],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1610"
+    },
+    {
+      "id": "childrens-sleepwear-flammability",
+      "title": "Children's sleepwear flammability",
+      "category": "flammability",
+      "citation": "16 CFR 1615; 16 CFR 1616",
+      "standard": "16 CFR 1615/1616",
+      "summary": "Children's sleepwear sizes 0-6X (1615) and 7-14 (1616) must be flame resistant or meet the snug-fit exemption.",
+      "cert_required": "CPC",
+      "third_party_testing": true,
+      "applies_when": {"all": [
+        {"attr": "is_childrens_product", "op": "eq", "value": true},
+        {"attr": "is_sleepwear", "op": "eq", "value": true}
+      ]},
+      "exemptions": [
+        {
+          "id": "snug-fit-sleepwear",
+          "citation": "16 CFR 1615.1(o) / 1616.2(m)",
+          "summary": "Tight-fitting ('snug-fit') sleepwear meeting the specified maximum dimensions is exempt from the flame-resistance requirement but must carry the required hangtag/labeling.",
+          "applies_when": {"attr": "is_snug_fit", "op": "eq", "value": true}
+        }
+      ],
+      "verification_tier": "official",
+      "source_url": "https://www.ecfr.gov/current/title-16/chapter-II/subchapter-D/part-1615"
+    }
+  ]
+}
