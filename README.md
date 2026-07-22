@@ -110,6 +110,10 @@ pytest -q
 `app/engine/extract.py` turns an unstructured description, web-page text, or test report
 into structured product attributes that pre-fill the interview.
 
+- **URL intake:** if the input is a product URL, the page is fetched and its readable
+  text (title + meta description + OpenGraph + body) is what gets analyzed — so pasting a
+  link pulls the product's data, not just the link string. JS-only single-page apps that
+  render client-side won't yield text (a headless-browser fetch is a future addition).
 - **Backend:** when `ANTHROPIC_API_KEY` is set, it calls the Anthropic Messages API with a
   **structured-output schema** (`messages.parse` + a Pydantic model), so the model fills a
   validated object mapped to the exact controlled vocabulary the rules engine uses — no
