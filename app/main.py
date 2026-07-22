@@ -493,13 +493,16 @@ def _login_html(error: bool = False) -> str:
 <title>Sign in - CPSC Compliance Consultant</title>
 <link rel="stylesheet" href="/static/styles.css"/>
 <style>
-  body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; }}
-  .login {{ width:100%; max-width:360px; }}
-  .err {{ color:var(--danger); font-size:13px; }}
-  form button {{ width:100%; }}
+  body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }}
+  .login {{ width:100%; max-width:400px; padding:0; }}
+  .login .card {{ box-shadow:var(--shadow-2); padding:40px 36px; text-align:center; }}
+  .login h1 {{ font-size:22px; font-weight:500; justify-content:center; margin-bottom:6px; }}
+  .login label {{ text-align:left; }}
+  .err {{ color:var(--danger); font-size:13px; background:var(--danger-soft); padding:8px 12px; border-radius:8px; }}
+  form button {{ width:100%; margin-top:20px; }}
 </style></head><body>
 <main class="login"><section class="card">
-  <h1 style="font-size:20px">CPSC Compliance Consultant</h1>
+  <h1>CPSC Compliance Consultant</h1>
   <p class="muted">Sign in to continue.</p>
   {msg}
   <form method="post" action="/login">
