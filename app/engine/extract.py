@@ -1,8 +1,8 @@
 """Intake extraction.
 
 Pre-fills product attributes from an unstructured input — a pasted product description,
-a URL's page text, or a test report — so the interview starts with a head-start instead
-of a blank slate.
+a **product URL** (the page is fetched and its readable text analyzed), or a test report
+— so the interview starts with a head-start instead of a blank slate.
 
 Two backends:
 
@@ -94,22 +94,87 @@ _SYSTEM_PROMPT = (
 )
 
 
-def extract_attributes(text: str, *, use_llm: bool | None = None) -> dict[str, Any]:
-    """Extract product attributes from unstructured text.
+def extract_attributes(source: str, *, use_llm: bool | None = None) -> dict[str, Any]:
+    """Extract product attributes from a description, a URL, or a test report.
 
-    Uses the LLM backend when available (``ANTHROPIC_API_KEY`` set), otherwise heuristics.
-    ``use_llm`` overrides that decision (used in tests). Never raises — LLM failures fall
-    back to heuristics with the error recorded in ``_llm_error``.
+    If ``source`` is a URL, the page is fetched and its readable text (title + meta +
+    body) is what gets analyzed — so pasting a product link actually pulls the product's
+    data, not just the link string. Uses the LLM backend when available
+    (``ANTHROPIC_API_KEY`` set), otherwise heuristics. Never raises — a fetch failure or
+    LLM failure degrades gracefully, with the reason recorded in ``_fetch_error`` /
+    ``_llm_error``.
     """
+    text, source_meta = _resolve_source(source)
+
     want_llm = use_llm if use_llm is not None else bool(os.getenv("ANTHROPIC_API_KEY"))
     if not want_llm:
-        return _heuristic_extract(text)
+        attrs = _heuristic_extract(text)
+    else:
+        try:
+            attrs = llm_extract(text)
+        except Exception as exc:  # noqa: BLE001 - intake must never fail on extraction
+            attrs = _heuristic_extract(text)
+            attrs["_llm_error"] = f"{type(exc).__name__}: {exc}"
+
+    attrs.update(source_meta)
+    return attrs
+
+
+def _resolve_source(source: str) -> tuple[str, dict[str, Any]]:
+    """If ``source`` is a URL, fetch it and return its readable text; else pass through.
+
+    Returns ``(text_to_analyze, metadata)``. On a fetch failure the raw URL is returned as
+    the text (weak, but never blocks intake) with the error in the metadata.
+    """
+    candidate = (source or "").strip()
+    if not looks_like_url(candidate):
+        return source, {}
     try:
-        return llm_extract(text)
-    except Exception as exc:  # noqa: BLE001 - intake must never fail on extraction
-        fallback = _heuristic_extract(text)
-        fallback["_llm_error"] = f"{type(exc).__name__}: {exc}"
-        return fallback
+        return fetch_url_text(candidate), {"_fetched_url": candidate}
+    except Exception as exc:  # noqa: BLE001
+        return source, {"_fetched_url": candidate, "_fetch_error": f"{type(exc).__name__}: {exc}"}
+
+
+def looks_like_url(text: str) -> bool:
+    """True if the whole input is a single http(s) URL (not prose that mentions one)."""
+    text = (text or "").strip()
+    return bool(re.match(r"^https?://\S+$", text)) and " " not in text
+
+
+def fetch_url_text(url: str, timeout: float = 15.0, max_chars: int = 20000) -> str:
+    """Fetch a URL and return its readable text (title + meta description + og + body)."""
+    import httpx
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; cpsc-compliance-consultant/0.1)"}
+    resp = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
+    resp.raise_for_status()
+    return html_to_text(resp.text, max_chars=max_chars)
+
+
+def html_to_text(html: str, max_chars: int = 20000) -> str:
+    """Extract readable text from HTML: title, meta description, OpenGraph tags, body."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    parts: list[str] = []
+
+    if soup.title and soup.title.string:
+        parts.append(soup.title.string.strip())
+    for attrs in ({"name": "description"}, {"property": "og:title"}, {"property": "og:description"}):
+        tag = soup.find("meta", attrs=attrs)
+        content = tag.get("content") if tag else None
+        if content:
+            parts.append(content.strip())
+
+    # Drop non-content nodes before pulling body text.
+    for node in soup(["script", "style", "noscript", "template", "svg"]):
+        node.decompose()
+    body = soup.get_text(" ", strip=True)
+    if body:
+        parts.append(body)
+
+    text = re.sub(r"\s+", " ", "\n".join(parts)).strip()
+    return text[:max_chars]
 
 
 # ---------------------------------------------------------------------------

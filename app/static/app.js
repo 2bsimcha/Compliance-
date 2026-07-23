@@ -150,10 +150,18 @@ $("btn-delete").onclick = async () => {
 };
 
 function showExtracted(attrs) {
-  const hints = Object.entries(attrs || {}).filter(([k]) => !k.startsWith("_"));
-  $("extracted").textContent = hints.length
-    ? "Known so far: " + hints.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")
-    : "";
+  attrs = attrs || {};
+  const hints = Object.entries(attrs).filter(([k]) => !k.startsWith("_"));
+  let html = "";
+  if (attrs._fetch_error) {
+    html += `<div class="gap">Couldn't fetch that URL (${escapeHtml(attrs._fetch_error)}). Try pasting the product description instead.</div>`;
+  } else if (attrs._fetched_url) {
+    html += `<div class="ok">Fetched page: ${escapeHtml(attrs._fetched_url)}</div>`;
+  }
+  if (hints.length) {
+    html += `Known so far: ` + hints.map(([k, v]) => `${k}=${escapeHtml(JSON.stringify(v))}`).join(", ");
+  }
+  $("extracted").innerHTML = html;
 }
 
 // ---- Interview -------------------------------------------------------------
